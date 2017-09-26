@@ -23,7 +23,7 @@ def areCoplanar(point1, point2, normal):
 	return isZero(dotProduct(point1, normal) - dotProduct(point2, normal))
 
 def pointsInNegativeHalfspace(normal, refPoint, points):
-	return all(not isPositive(dotProduct(difference(point, refPoint), normal)) for point in points)
+	return all(isNegative(dotProduct(difference(point, refPoint), normal)) for point in points)
 def pointInPositiveHalfspaces(normals, refPoints, point):
 	return all(not isNegative(dotProduct(difference(point, refPoint), normal)) for (normal, refPoint) in zip(normals, refPoints))
 
@@ -64,9 +64,9 @@ p2 = [0, 1, 0]
 p3 = [0, 0, 0]
 tr1 = [p1, p2, p3]
 
-q1 = [0.5, 0, 1]
-q2 = [0.5, 1, 0]
-q3 = [0.5, 0, -0.1]
+q1 = [0, 0.5, 0]
+q2 = [-1, 0, 0]
+q3 = [0, -1, 0]
 tr2 = [q1, q2, q3]
 
 print(doTrianglesIntersect3D(tr1, tr2))
