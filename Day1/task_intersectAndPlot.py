@@ -105,22 +105,115 @@ def plotTriangle(ax, tr):
     ax.add_collection3d(tri)
 
 
+trianglePairs = []
+
+# 1
 p1 = [0, 0, 0]
-p2 = [0, 1, 0]
+p2 = [0, 5, 0]
+p3 = [6, 5, 0]
+tr1 = [p1, p2, p3]
+q1 = [1, 4, 0]
+q2 = [2, 4, 0]
+q3 = [2, 3, 0]
+tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
+
+# 2
+p1 = [-1, 0, 0]
+p2 = [0, -1, 0]
+p3 = [0, 0, 0]
+tr1 = [p1, p2, p3]
+q1 = [0, 0, 0]
+q2 = [0, 3, 0]
+q3 = [5, 0, 0]
+tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
+
+# 3
+p1 = [-1, 0, 0]
+p2 = [0, 2, 0]
+p3 = [0, 0, 0]
+tr1 = [p1, p2, p3]
+q1 = [0, 0, 0]
+q2 = [5, 0, 0]
+q3 = [0, 4, 0]
+tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
+
+# 4
+p1 = [0, 0, 0]
+p2 = [0, 2, 0]
 p3 = [1, 0, 0]
 tr1 = [p1, p2, p3]
-
-q1 = [1, 1, 0]
-q2 = [0.5, 0.5, 0]
-q3 = [0, 1, 0]
+q1 = [0, -1, 0]
+q2 = [0, 3, 0]
+q3 = [7, -1, 0]
 tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
 
-print(doTrianglesIntersect3D(tr1, tr2))
+# 5
+p1 = [0, 0, 0]
+p2 = [0, 4, 0]
+p3 = [4, 0, 0]
+tr1 = [p1, p2, p3]
+q1 = [1, 2, 0]
+q2 = [1, 1, -3]
+q3 = [0.5, 2, -2]
+tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
 
-ax = a3.Axes3D(plt.figure())
-plotTriangle(ax, tr1)
-plotTriangle(ax, tr2)
-plt.show()
+# 6
+p1 = [0, 0, 0]
+p2 = [0, 4, 0]
+p3 = [4, 0, 0]
+tr1 = [p1, p2, p3]
+q1 = [4, 0, 0]
+q2 = [1, 1, -3]
+q3 = [0.5, 2, -2]
+tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
+
+# 7
+p1 = [0, 0, 0]
+p2 = [0, 4, 0]
+p3 = [4, 0, 0]
+tr1 = [p1, p2, p3]
+q1 = [1, 2, 0]
+q2 = [2, 1, 0]
+q3 = [0.5, 2, -2]
+tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
+
+# 8
+p1 = [0, 0, 0]
+p2 = [0, 4, 0]
+p3 = [4, 0, 0]
+tr1 = [p1, p2, p3]
+q1 = [-1, 2, 2]
+q2 = [0, 2, 2]
+q3 = [0, 0, -2]
+tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
+
+# 9
+p1 = [0, 0, 0]
+p2 = [0, 4, 0]
+p3 = [5, 0, 0]
+tr1 = [p1, p2, p3]
+q1 = [1, 1, 2]
+q2 = [5, 6, -2]
+q3 = [3, -4, -1]
+tr2 = [q1, q2, q3]
+trianglePairs.append((tr1, tr2))
+
+for pair in trianglePairs:
+    print(doTrianglesIntersect3D(pair[0], pair[1]))
+    ax = a3.Axes3D(plt.figure())
+    plotTriangle(ax, pair[0])
+    plotTriangle(ax, pair[1])
+    plt.show()
+
+
 
 
 
