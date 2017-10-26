@@ -18,12 +18,10 @@ class disc():
         return patches.Circle((self.__oX, self.__oY), radius = self.__radius, color = self.__colour, fill = True)
 
     def toXML(self):
-        disc = ET.Element('disc')
-        ox = ET.SubElement(disc, 'ox')
-        oy = ET.SubElement(disc, 'oy')
-        radius = ET.SubElement(disc, 'radius')
-        colour = ET.SubElement(disc, 'colour')
-        return disc
+        return ET.Element('Disc', attrib = {'ox': '%f' % self.__oX, 
+                                            'oy': '%f' % self.__oY, 
+                                            'radius': '%f' % self.__radius,
+                                            'colour': self.__colour})
 
 class figureElement():
 
@@ -53,10 +51,12 @@ class figureElement():
         self.figure.gca().add_patch(patch)
         self.figure.canvas.draw()
 
+    def clear(self):
+        self.__plot.clear()
+        self.__plot.grid(True)
+
     def toXML(self):
-        fig = ET.Element('figure')
-        limit = ET.SubElement(fig, 'limit')
-        return fig
+        return ET.Element('Figure', attrib = {'limit': '%f' % self.__maxX})
 
 class sliderElement():
 
@@ -71,10 +71,7 @@ class sliderElement():
         self.__slider['from'] = maxVal / 100.
 
     def toXML(self):
-        slider = ET.Element('slider')
-        maxval = ET.SubElement(slider, 'maxval')
-        curval = ET.SubElement(slider, 'curval')
-        return fig
+        return ET.Element('Slider', attrib = {'maxval': '%f' % self.__slider['to']})
 
 class radioButtonGroupElement():
 
@@ -154,17 +151,16 @@ class VoilaApp():
         self.root.mainloop()
 
     def toXML(self):
-        app = ET.Element('app')
-        colour = ET.SubElement(app, 'colour')
-        fig = ET.SubElement(app, 'fig')
-        slider = ET.SubElement(app, 'slider')
-        discs = ET.SubElement(app, 'discs')
+        app = ET.Element('App', attrib = {'colour': self.colour})
+        app.append(self.__figEl.toXML())
+        app.append(self.slider.toXML())
+        
+        discsEl = ET.Element('Discs')
         for disc in self.discs:
-            ET.SubElement(discs, 'disc')
-        return app
+            discsEl.append(disc.toXML())
+        app.append(discsEl)
 
-    def treeXML(self):
-        return ET.ElementTree(self.toXML)
+        return ET.ElementTree(app)
 
     def __resize(self, factor):
         self.__figEl.resize(factor)
@@ -173,19 +169,37 @@ class VoilaApp():
     def __selectColour(self):
         self.colour = colorchooser.askcolor()[1]
 
+    def __addAndDrawDisc(self, x, y, rad, colour):
+        self.discs.append(disc(x, y, rad, colour))
+        self.__figEl.addAndDrawPatch(self.discs[-1].getPatch())
+
     def __onMouseMovementEvent(self, event):
         self.mouseX['text'] = event.xdata
         self.mouseY['text'] = event.ydata
 
     def __onMouseClickEvent(self, event):
-        self.discs.append(disc(event.xdata, event.ydata, self.radius.get(), self.colour))
-        self.__figEl.addAndDrawPatch(self.discs[-1].getPatch())
+        self.__addAndDrawDisc(event.xdata, event.ydata, self.radius.get(), self.colour)
 
     def __saveXML(self):
         name = filedialog.asksaveasfilename()
+        with open(name, 'wb') as f:
+            self.toXML().write(f, encoding='utf-8') 
 
     def __loadXML(self):
         name = filedialog.askopenfilename()
+        with open(name, 'rt') as f:
+            tree = ET.parse(f)
+        root = tree.getroot()
+
+        self.__figEl.clear()
+        self.__figEl.resize(float(root[0].attrib['limit']) / self.__figEl.limit())
+
+        self.colour = root.attrib['colour']
+        self.slider.rescale(float(root[1].attrib['maxval']))
+
+        self.discs = []
+        for disc in list(root[2]):
+            self.__addAndDrawDisc(float(disc.attrib['ox']), float(disc.attrib['oy']), float(disc.attrib['radius']), disc.attrib['colour'])
 
 app = VoilaApp()
 app.run()
