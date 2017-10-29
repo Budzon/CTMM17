@@ -6,6 +6,9 @@ from matplotlib.backends import backend_tkagg
 
 import xml.etree.ElementTree as ET
 
+import time
+import N_body
+
 class disc():
 
     def __init__(self, oX, oY, radius, colour):
@@ -13,6 +16,10 @@ class disc():
         self.__oY = oY
         self.__radius = radius
         self.__colour = colour
+
+    def moveTo(self, xy):
+        self.__oX = xy[0]
+        self.__oY = xy[1]
 
     def getPatch(self):
         return patches.Circle((self.__oX, self.__oY), radius = self.__radius, color = self.__colour, fill = True)
@@ -46,6 +53,11 @@ class figureElement():
 
     def setEventReaction(self, eventName, reaction):
         self.figure.canvas.mpl_connect(eventName, reaction)
+
+    def addAndDrawPatches(self, patches):
+        for patch in patches:
+            self.figure.gca().add_patch(patch)
+        self.figure.canvas.draw()
 
     def addAndDrawPatch(self, patch):
         self.figure.gca().add_patch(patch)
@@ -141,6 +153,14 @@ class VoilaApp():
         # self.integrationProcedureRadioButtonGroup.placeGrid(1, 1)
         self.integrationProcedureRadioButtonGroup.placeGrid()
 
+        self.__figEl_planets = figureElement()
+        self.canvas_planets = backend_tkagg.FigureCanvasTkAgg(self.__figEl_planets.figure, master = self.modelTab)
+        self.canvas_planets.show()
+        self.canvas_planets.get_tk_widget().grid(row = 1, column = 1)
+
+        self.animateButton = tk.Button(self.modelTab, text = "Animate", command = self.__animatePlanets)
+        self.animateButton.grid(row = 2, column = 1)
+
     # Setting up events
         self.__figEl.setEventReaction('motion_notify_event', lambda event: self.__onMouseMovementEvent(event))
 
@@ -179,6 +199,20 @@ class VoilaApp():
 
     def __onMouseClickEvent(self, event):
         self.__addAndDrawDisc(event.xdata, event.ydata, self.radius.get(), self.colour)
+
+    def __animatePlanets(self):
+        posvels, times = N_body.sunEarthMoon(self.algorithm.get())
+        orbit = posvels[0, 2]
+        sun = disc(posvels[0, 0], posvels[0, 1], orbit / 10, 'yellow')
+        earth = disc(posvels[0, 2], posvels[0, 3], orbit / 40, 'blue')
+        moon = disc(posvels[0, 4], posvels[0, 5], orbit / 80, 'black')
+        for t in range(len(times)):
+            self.__figEl_planets.clear()
+            self.__figEl_planets.resize(1.2 * orbit / self.__figEl_planets.limit())
+            sun.moveTo(posvels[t, [0,1]])
+            earth.moveTo(posvels[t, [2,3]])
+            moon.moveTo(posvels[t, [4,5]])
+            self.__figEl_planets.addAndDrawPatches([sun.getPatch(), earth.getPatch(), moon.getPatch()])
 
     def __saveXML(self):
         name = filedialog.asksaveasfilename()
