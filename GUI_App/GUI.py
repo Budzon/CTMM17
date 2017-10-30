@@ -213,6 +213,7 @@ class VoilaApp():
             earth.moveTo(posvels[t, [2,3]])
             moon.moveTo(posvels[t, [4,5]])
             self.__figEl_planets.addAndDrawPatches([sun.getPatch(), earth.getPatch(), moon.getPatch()])
+            time.sleep(0.1)
 
     def __saveXML(self):
         name = filedialog.asksaveasfilename()
