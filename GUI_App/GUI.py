@@ -149,7 +149,15 @@ class VoilaApp():
 
     # Setting up modelTab
         self.integrationProcedureRadioButtonGroup = radioButtonGroupElement(self.modelTab, self.algorithm, 
-            [0,1,2,3,4], ['scipy', 'verlet', 'verlet-threading', 'verlet-multiprocessing', 'verlet-opencl'])
+            [0,1,2,3,4,5,6,7],
+            ['scipy',
+             'verlet',
+             'verlet-threading',
+             'verlet-multiprocessing',
+             'verlet-cython-notm-nomp',
+             'verlet-cython-notm-mp',
+             'verlet-cython-tm-nomp',
+             'verlet-cython-tm-mp'])
         # self.integrationProcedureRadioButtonGroup.placeGrid(1, 1)
         self.integrationProcedureRadioButtonGroup.placeGrid()
 
