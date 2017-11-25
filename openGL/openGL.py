@@ -3,20 +3,20 @@ from OpenGL.GL import *
 from OpenGL.GL.shaders import *
 from OpenGL.GLUT import *
 import numpy as np
-
+import pywavefront
 
 # global window_height, window_width
 window_height, window_width = 400, 600
 
 # global fov, aspect, z_near, z_far
-fov, aspect, z_near, z_far = 60.0, window_width / window_height, 0.1, 100.
+fov, aspect, z_near, z_far = 60.0, window_width / window_height, 1., 100.
 
 # global angle_speed, mouse_speed, move_speed
-angle_speed, mouse_speed, move_speed = 12, 5e-3, 5.
+angle_speed, mouse_speed, move_speed = 5, 5e-3, 5.
 angles = np.zeros(2)
 # global eye, target, up, MAX_EYE_DIST
-eye = np.array([4.0, 0.0, 0.0])
-target = np.array([-4.0, 0.0, 0.0])
+eye = np.array([0.0, 0.0, -2.0])
+target = np.array([0.0, 0.0, 1.0])
 up = np.array([0.0, 1.0, 0.0])
 MAX_EYE_DIST = 25.0
 
@@ -31,6 +31,7 @@ global shader_uniform_color, shader_attribute_color
 
 global meshes
 
+monkey = pywavefront.Wavefront('monkey.obj')
 
 move, left, right, forward, backward, upward, downward = 0, 1, 2, 4, 8, 16, 32
 
@@ -46,16 +47,25 @@ class Matrices:
         ])
 
     @staticmethod
-    def rotate(by, axis):
+    def rotate(by, v):
         s, c = np.sin(by), np.cos(by)
-        res = np.eye(4)
-        axes = [0, 1, 2]
-        del axes[axis]
-        res[axes[0], axes[0]] = c
-        res[axes[1], axes[1]] = c
-        res[axes[0], axes[1]] = s
-        res[axes[1], axes[0]] = -s
-        return res
+        axis = Matrices.normalize(v)
+        tmp = (1-c)*axis
+
+        rot = np.eye(4)
+        rot[0, 0] = c + tmp[0]*axis[0]
+        rot[1, 0] = tmp[0]*axis[1] + s*axis[2]
+        rot[2, 0] = tmp[0]*axis[2] - s*axis[1]
+
+        rot[0, 1] = tmp[1]*axis[0] - s*axis[2]
+        rot[1, 1] = c + tmp[1]*axis[1]
+        rot[2, 1] = tmp[1]*axis[2] + s*axis[0]
+
+        rot[0, 2] = tmp[2]*axis[0] + s*axis[1]
+        rot[1, 2] = tmp[2]*axis[1] - s*axis[0]
+        rot[2, 2] = c + tmp[2]*axis[2]
+
+        return rot
 
     @staticmethod
     def scale(by):
@@ -70,27 +80,45 @@ class Matrices:
             return v / m
 
     @staticmethod
-    def look_at(eye, target, up):
-        F = target[:3] - eye[:3]
-        f = Matrices.normalize(F)
-        U = Matrices.normalize(up[:3])
-        s = np.cross(f, U)
-        u = np.cross(s, f)
-        M = np.eye(4)
-        M[:3, :3] = np.vstack([s, u, -f])
-        T = Matrices.translate(-eye)
-        return M.dot(T)
+    def look_at(eye, center, up):
+        f = Matrices.normalize(center - eye)
+        s = Matrices.normalize(np.cross(f, up))
+        u = np.cross(Matrices.normalize(s), f)
+
+        lookat = np.eye(4)
+        # lookat[0, 0] = s[0]
+        # lookat[0, 1] = s[1]
+        # lookat[0, 2] = s[2]
+
+        # lookat[1, 0] = u[0]
+        # lookat[1, 1] = u[1]
+        # lookat[1, 2] = u[2]
+        #
+        # lookat[2, 0] = -f[0]
+        # lookat[2, 1] = -f[1]
+        # lookat[2, 2] = -f[2]
+
+        lookat[0, :3] = s
+        lookat[1, :3] = u
+        lookat[2, :3] = -f
+
+        # lookat[0, 3] = -s.dot(eye)
+        # lookat[1, 3] = -u.dot(eye)
+        # lookat[2, 3] = f.dot(eye)
+
+        return lookat.dot(Matrices.translate(-eye))
 
     @staticmethod
-    def perspective(fov, aspect, near, far):
-        s = 1.0 / np.tan(np.radians(fov) / 2.0)
-        sx, sy = s / aspect, s
-        zz = (far + near) / (near - far)
-        zw = 2 * far * near / (near - far)
-        return np.array([[sx, 0, 0, 0],
-                         [0, sy, 0, 0],
-                         [0, 0, zz, zw],
-                         [0, 0, -1, 0]])
+    def perspective(fovy, aspect, z_near, z_far):
+        tan_half_fovy = np.tan(fovy * np. pi / 180 / 2)
+        result = np.zeros((4, 4))
+        result[0, 0] = 1 / aspect / tan_half_fovy
+        result[1, 1] = 1 / tan_half_fovy
+        result[2, 2] = (z_near + z_far) / (z_near - z_far)
+        result[3, 2] = -1
+        result[2, 3] = 2 * z_far * z_near / (z_near - z_far)
+
+        return result
 
 
 class Mesh:
@@ -160,6 +188,20 @@ class Box(Mesh):
             4, 5, 6, 6, 7, 4
         ])
         # self.colors = np.array(colors)
+
+
+class Square(Mesh):
+    def __init__(self, sizes):
+        super().__init__()
+        self.vertices = np.array([
+            sizes[0], sizes[1], 0,
+            sizes[0], -sizes[1], 0,
+            -sizes[0], -sizes[1], 0,
+            -sizes[0], sizes[1], 0
+        ])
+        self.indices = np.array([
+            0, 1, 2, 2, 3, 0
+        ])
 
 
 def init():
@@ -232,6 +274,8 @@ def init():
                        1.0, 0.0, 1.0, 1.0,
                        0.0, 1.0, 1.0, 1.0]))
 
+    meshes.append(Square([0.5, 0.4]))
+
     for mesh in meshes:
         mesh.set_buffers()
 
@@ -264,6 +308,13 @@ def set_matrix_cube():
     mvp_mat = p_mat.dot(mv_mat)
 
 
+def set_matrix_square():
+    global m_mat, mv_mat, mvp_mat
+    m_mat = Matrices.rotate(np.pi/4, np.array([0, 1, 0]))
+    mv_mat = v_mat.dot(m_mat)
+    mvp_mat = p_mat.dot(mv_mat)
+
+
 def set_matrix_cone():
     global m_mat, mv_mat, mvp_mat, v_mat, p_mat
     m_mat = Matrices.translate([0.0, 1.0, 0.0])
@@ -285,7 +336,7 @@ def set_uniforms(color_is_attribute):
 def display():
     glEnable(GL_DEPTH_TEST)
     glViewport(0, 0, window_width, window_height)
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)
+    # glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)
     glClearColor(0.7, 0.7, 0.7, 1.0)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
@@ -294,10 +345,10 @@ def display():
 
     glUseProgram(shader_uniform_color)
 
-    set_matrix_cone()
+    set_matrix_square()
     set_uniforms(color_is_attribute=False)
-    glutSolidCone(1.0, 0.5, 10, 10)
-
+    glutSolidTorus(0.5, 1., 30, 20)
+    
     # glUseProgram(shader_uniform_color)
     #
     # set_matrix_cube()
