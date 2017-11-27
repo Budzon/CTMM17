@@ -348,7 +348,7 @@ def display():
     set_matrix_square()
     set_uniforms(color_is_attribute=False)
     glutSolidTorus(0.5, 1., 30, 20)
-    
+
     # glUseProgram(shader_uniform_color)
     #
     # set_matrix_cube()

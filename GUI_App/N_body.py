@@ -208,17 +208,17 @@ def sunEarthMoon(method):
                2: solveNbodiesVerletThreading,
                3: solveNbodiesVerletMultiprocessing,
                4: cython_body.SolveNbodiesVerletCython_notm_nomp,
-               5: cython_body.SolveNbodiesVerletCython_notm_mp,
+               # 5: cython_body.SolveNbodiesVerletCython_notm_mp,
                6: cython_body.SolveNbodiesVerletCython_tm_nomp,
                7: cython_body.SolveNbodiesVerletCython_tm_mp}
 
     print(methods[method].__name__)
     return methods[method](masses, init_pos, init_vel, 60*60*24, 365*5)  # 120 : 240000
 
-t = time.time()
-posvel, times = sunEarthMoon(7)
-print(time.time() - t)
-plt.plot(posvel[:, 0], posvel[:, 1], 'orange')
-plt.plot(posvel[:, 2], posvel[:, 3], 'cyan')
-plt.plot(posvel[:, 4], posvel[:, 5], 'red')
-plt.show()
+# t = time.time()
+# posvel, times = sunEarthMoon(7)
+# print(time.time() - t)
+# plt.plot(posvel[:, 0], posvel[:, 1], 'orange')
+# plt.plot(posvel[:, 2], posvel[:, 3], 'cyan')
+# plt.plot(posvel[:, 4], posvel[:, 5], 'red')
+# plt.show()

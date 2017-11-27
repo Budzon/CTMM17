@@ -1,14 +1,15 @@
 cimport cython
 cimport numpy as np
 import numpy as np
+from cython.parallel import prange, parallel
 
-from libc.math cimport sqrt
+from libc.math cimport sqrt, pow
 
 cdef double G = 6.67408e-11
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
+# @cython.boundscheck(False)
+# @cython.wraparound(False)
 cdef np.ndarray[double, ndim=1] accelerations_notm_nomp(np.ndarray[double, ndim=1] masses,
                                                         np.ndarray[double, ndim=1] positions):
     cdef:
@@ -28,8 +29,8 @@ cdef np.ndarray[double, ndim=1] accelerations_notm_nomp(np.ndarray[double, ndim=
     return res
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
+# @cython.boundscheck(False)
+# @cython.wraparound(False)
 def SolveNbodiesVerletCython_notm_nomp(np.ndarray[double, ndim=1] masses,
                                        np.ndarray[double, ndim=1] init_pos,
                                        np.ndarray[double, ndim=1] init_vel,
@@ -56,55 +57,55 @@ def SolveNbodiesVerletCython_notm_nomp(np.ndarray[double, ndim=1] masses,
     return np.concatenate((pos, vel), 1), times
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-cdef np.ndarray[double, ndim=1] accelerations_notm_mp(np.ndarray[double, ndim=1] masses,
-                                                      np.ndarray[double, ndim=1] positions):
-    cdef:
-        int n_bodies = masses.size
-        int dimension = <int>positions.size / <int>masses.size
-        double norm
-        np.ndarray res = np.zeros(positions.size)
-        np.ndarray dx = np.zeros(dimension)
-        int i, j
-
-    #pragma omp parallel for
-    for i in range(n_bodies):
-        #pragma omp parallel for
-        for j in range(n_bodies):
-            if i != j:
-                dx = positions[j*dimension:(j+1)*dimension] - positions[i*dimension:(i+1)*dimension]
-                norm = pow(np.linalg.norm(dx), 3)
-                res[i*dimension:(i+1)*dimension] += G*masses[j] * dx / norm
-    return res
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-def SolveNbodiesVerletCython_notm_mp(np.ndarray[double, ndim=1] masses,
-                                     np.ndarray[double, ndim=1] init_pos,
-                                     np.ndarray[double, ndim=1] init_vel,
-                                     double dt,
-                                     int iterations):
-    cdef:
-        times = np.arange(iterations) * dt
-        int half = init_pos.size
-        np.ndarray[double, ndim=2] pos = np.empty((times.size, half))
-        np.ndarray[double, ndim=2] vel = np.empty((times.size, half))
-        int j
-
-    pos[0] = init_pos
-    vel[0] = init_vel
-
-    cdef np.ndarray[double, ndim=1] cur_accelerations = accelerations_notm_mp(masses, pos[0])
-    cdef np.ndarray[double, ndim=1] next_accelerations
-    for j in range(iterations - 1):
-        pos[j+1] = pos[j] + vel[j] * dt + 0.5 * cur_accelerations * dt * dt
-        next_accelerations = accelerations_notm_mp(masses, pos[j+1])
-        vel[j+1] = vel[j] + 0.5 * (cur_accelerations + next_accelerations) * dt
-        cur_accelerations = next_accelerations
-
-    return np.concatenate((pos, vel), 1), times
+# @cython.boundscheck(False)
+# @cython.wraparound(False)
+# cdef np.ndarray[double, ndim=1] accelerations_notm_mp(np.ndarray[double, ndim=1] masses,
+#                                                       np.ndarray[double, ndim=1] positions):
+#     cdef:
+#         int n_bodies = masses.size
+#         int dimension = <int>positions.size / <int>masses.size
+#         double norm
+#         np.ndarray res = np.zeros(positions.size)
+#         np.ndarray dx = np.zeros(dimension)
+#         int i, j
+#
+#     with nogil, parallel(num_threads=4):
+#         for i in prange(n_bodies):
+#             for j in prange(n_bodies):
+#                 if i != j:
+#                     dx = positions[j*dimension:(j+1)*dimension] - positions[i*dimension:(i+1)*dimension]
+#                     norm = pow(np.linalg.norm(dx), 3)
+#                     res[i*dimension:(i+1)*dimension] += G*masses[j] * dx / norm
+#     return res
+#
+#
+# @cython.boundscheck(False)
+# @cython.wraparound(False)
+# def SolveNbodiesVerletCython_notm_mp(np.ndarray[double, ndim=1] masses,
+#                                      np.ndarray[double, ndim=1] init_pos,
+#                                      np.ndarray[double, ndim=1] init_vel,
+#                                      double dt,
+#                                      int iterations):
+#     cdef:
+#         times = np.arange(iterations) * dt
+#         int half = init_pos.size
+#         np.ndarray[double, ndim=2] pos = np.empty((times.size, half))
+#         np.ndarray[double, ndim=2] vel = np.empty((times.size, half))
+#         int j
+#
+#     pos[0] = init_pos
+#     vel[0] = init_vel
+#
+#     cdef np.ndarray[double, ndim=1] cur_accelerations = accelerations_notm_mp(masses, pos[0])
+#     cdef np.ndarray[double, ndim=1] next_accelerations
+#     with nogil, parallel(num_threads=4):
+#         for j in prange(iterations - 1):
+#             pos[j+1] = pos[j] + vel[j] * dt + 0.5 * cur_accelerations * dt * dt
+#             next_accelerations = accelerations_notm_mp(masses, pos[j+1])
+#             vel[j+1] = vel[j] + 0.5 * (cur_accelerations + next_accelerations) * dt
+#             cur_accelerations = next_accelerations
+#
+#     return np.concatenate((pos, vel), 1), times
 
 
 @cython.boundscheck(False)
@@ -175,30 +176,36 @@ def SolveNbodiesVerletCython_tm_nomp(double[:] masses,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cdef double[:] accelerations_tm_mp(double[:] masses,
-                                     double[:] positions):
+                                   double[:] positions):
     cdef:
         int n_bodies = masses.size
         int dimension = <int>positions.size / <int>masses.size
-        double norm
+        # double norm, norm3
         double[:] res = np.zeros(positions.size)
-        double[:] tmp = np.zeros(dimension)
+        double[:, :, :] tmp = np.zeros((n_bodies, n_bodies, dimension))
+        double[:, :] norm = np.zeros((n_bodies, n_bodies))
         double dx
         int i, j, d
 
-    #pragma omp parallel for
+    with nogil, parallel(num_threads=2):
+        for i in prange(n_bodies):
+            for j in prange(n_bodies):
+                if i != j:
+                    for d in prange(dimension):
+                        dx = positions[j*dimension + d] - positions[i*dimension + d]
+                        norm[i, j] += dx * dx
+                        tmp[i, j, d] = G*masses[j] * dx
+
     for i in range(n_bodies):
-        #pragma omp parallel for
         for j in range(n_bodies):
-            if i != j:
-                norm = 0
-                for d in range(dimension):
-                    dx = positions[j*dimension + d] - positions[i*dimension + d]
-                    norm += dx * dx
-                    tmp[d] = G*masses[j] * dx
-                norm = pow(sqrt(norm), 3)
-                #pragma omp parallel for
-                for d in range(dimension):
-                    res[i*dimension + d] += tmp[d] / norm
+                norm[i, j] = pow(norm[i, j], 1.5)
+
+    with nogil, parallel(num_threads=2):
+        for d in prange(dimension):
+            for i in prange(n_bodies):
+                for j in prange(n_bodies):
+                    if i!=j:
+                        res[i*dimension + d] += tmp[i, j, d] / norm[i, j]
     return res
 
 
@@ -224,21 +231,22 @@ def SolveNbodiesVerletCython_tm_mp(double[:] masses,
     cdef double[:] cur_accelerations = accelerations_tm_mp(masses, pos[0])
     cdef double[:] next_accelerations
     for j in range(iterations - 1):
-        #pragma omp parallel for
-        for d in range(dimension):
-            #pragma omp parallel for
-            for n in range(n_bodies):
-                pos[j+1, n*dimension + d] = \
-                    pos[j, n*dimension + d]\
-                    + vel[j, n*dimension + d] * dt + 0.5 * cur_accelerations[n*dimension + d] * dt * dt
+        with nogil, parallel(num_threads=2):
+            for d in prange(dimension):
+                for n in prange(n_bodies):
+                    pos[j+1, n*dimension + d] = \
+                        pos[j, n*dimension + d]\
+                        + vel[j, n*dimension + d] * dt + 0.5 * cur_accelerations[n*dimension + d] * dt * dt
+
         next_accelerations = accelerations_tm_mp(masses, pos[j+1])
-        #pragma omp parallel for
-        for d in range(dimension):
-            #pragma omp parallel for
-            for n in range(n_bodies):
-                vel[j+1, n*dimension + d] = \
-                    vel[j, n*dimension + d] \
-                    + 0.5 * (cur_accelerations[n*dimension + d] + next_accelerations[n*dimension + d]) * dt
+
+        with nogil, parallel(num_threads=2):
+            for d in prange(dimension):
+                for n in prange(n_bodies):
+                    vel[j+1, n*dimension + d] = \
+                        vel[j, n*dimension + d] \
+                        + 0.5 * (cur_accelerations[n*dimension + d] + next_accelerations[n*dimension + d]) * dt
+
         cur_accelerations = next_accelerations
 
     return np.concatenate((pos, vel), 1), times
