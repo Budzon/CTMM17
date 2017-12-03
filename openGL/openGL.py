@@ -2,36 +2,27 @@
 from OpenGL.GL import *
 from OpenGL.GL.shaders import *
 from OpenGL.GLUT import *
+from OpenGL.GLU import *
+from OpenGL.arrays import vbo, ArrayDatatype
 import numpy as np
-import pywavefront
+from obj_parser import ObjParser
+import random
 
-# global window_height, window_width
 window_height, window_width = 400, 600
 
-# global fov, aspect, z_near, z_far
-fov, aspect, z_near, z_far = 60.0, window_width / window_height, 1., 100.
+fov, aspect, z_near, z_far = 60.0, window_width / window_height, 0.1, 10.
 
-# global angle_speed, mouse_speed, move_speed
 angle_speed, mouse_speed, move_speed = 5, 5e-3, 5.
 angles = np.zeros(2)
-# global eye, target, up, MAX_EYE_DIST
+
 eye = np.array([0.0, 0.0, -2.0])
 target = np.array([0.0, 0.0, 1.0])
 up = np.array([0.0, 1.0, 0.0])
 MAX_EYE_DIST = 25.0
 
-global m_mat, v_mat, mv_mat, p_mat, mvp_mat
-global color
-
-global loc_m_mat_uc, loc_mv_mat_uc, loc_mvp_mat_uc
-global loc_m_mat_ac, loc_mv_mat_ac, loc_mvp_mat_ac
-global loc_color
-
+global color, loc_color
 global shader_uniform_color, shader_attribute_color
-
 global meshes
-
-monkey = pywavefront.Wavefront('monkey.obj')
 
 move, left, right, forward, backward, upward, downward = 0, 1, 2, 4, 8, 16, 32
 
@@ -122,12 +113,14 @@ class Matrices:
 
 
 class Mesh:
-    def __init__(self):
+    def __init__(self, shader):
         self.vao = -1
         self.vbo = []
         self.vertices = np.empty(1)
         self.indices = np.empty(1)
         self.data_count = 0
+        self.shader = shader
+        # self.colors = np.empty(1)
 
     def set_buffers(self):
         color_as_attribute = hasattr(self, 'colors')
@@ -139,28 +132,34 @@ class Mesh:
         glBindVertexArray(self.vao)
 
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo[0])
-        glBufferData(GL_ARRAY_BUFFER, self.vertices, GL_STATIC_DRAW)
+        glBufferData(GL_ARRAY_BUFFER, ArrayDatatype.arrayByteCount(self.vertices), self.vertices, GL_STATIC_DRAW)
+        glVertexAttribPointer(glGetAttribLocation(self.shader, 'pos'), 3, GL_FLOAT, GL_FALSE, 0, None)
+        glEnableVertexAttribArray(0)
 
         # glEnable(GL_ELEMENT_ARRAY_BUFFER)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.vbo[1])
         # glBufferData(GL_ELEMENT_ARRAY_BUFFER, len(self.indices)*4, (ctypes.c_uint * len(self.indices))(*self.indices), GL_STATIC_DRAW)
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, self.indices, GL_STATIC_DRAW)
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, ArrayDatatype.arrayByteCount(self.indices), self.indices, GL_STATIC_DRAW)
 
         if color_as_attribute:
             glBindBuffer(GL_ARRAY_BUFFER, self.vbo[2])
-            glBufferData(GL_ARRAY_BUFFER, self.colors, GL_STATIC_DRAW)
+            glBufferData(GL_ARRAY_BUFFER, ArrayDatatype.arrayByteCount(self.colors), self.colors, GL_STATIC_DRAW)
+            glVertexAttribPointer(glGetAttribLocation(self.shader, 'color'), 3, GL_FLOAT, GL_FALSE, 0, None)
+            glEnableVertexAttribArray(1)
 
         glBindVertexArray(0)
 
     def draw(self):
+        glUseProgram(self.shader)
         glBindVertexArray(self.vao)
         glDrawElements(GL_TRIANGLES, len(self.indices), GL_UNSIGNED_INT, None)
         glBindVertexArray(0)
+        glUseProgram(0)
 
 
 class Box(Mesh):
-    def __init__(self, half_sizes, colors):
-        super().__init__()
+    def __init__(self, half_sizes, colors, shader):
+        super().__init__(shader)
         self.vertices = np.array([
             # Bottom
             half_sizes[0], -half_sizes[1], -half_sizes[2],
@@ -171,37 +170,137 @@ class Box(Mesh):
             half_sizes[0], -half_sizes[1],  half_sizes[2],
             half_sizes[0], half_sizes[1],  half_sizes[2],
             -half_sizes[0], half_sizes[1],  half_sizes[2],
-            -half_sizes[0], -half_sizes[1],  half_sizes[2]
-        ])
+            -half_sizes[0], -half_sizes[1],  half_sizes[2],
+            # Front
+            half_sizes[0], -half_sizes[1], -half_sizes[2],
+            half_sizes[0], half_sizes[1], -half_sizes[2],
+            half_sizes[0], half_sizes[1], half_sizes[2],
+            half_sizes[0], -half_sizes[1], half_sizes[2],
+            # Back
+            -half_sizes[0], -half_sizes[1], -half_sizes[2],
+            -half_sizes[0], half_sizes[1], -half_sizes[2],
+            -half_sizes[0], half_sizes[1], half_sizes[2],
+            -half_sizes[0], -half_sizes[1], half_sizes[2],
+            # Left
+            half_sizes[0], -half_sizes[1], -half_sizes[2],
+            -half_sizes[0], -half_sizes[1], -half_sizes[2],
+            -half_sizes[0], -half_sizes[1], half_sizes[2],
+            half_sizes[0], -half_sizes[1], half_sizes[2],
+            # Right
+            half_sizes[0], half_sizes[1], -half_sizes[2],
+            -half_sizes[0], half_sizes[1], -half_sizes[2],
+            -half_sizes[0], half_sizes[1], half_sizes[2],
+            half_sizes[0], half_sizes[1], half_sizes[2]
+        ], dtype='f')
         self.indices = np.array([
             # Bottom
             0, 1, 2, 2, 3, 0,
-            # Front
-            0, 1, 5, 5, 4, 0,
-            # Right
-            1, 2, 6, 6, 5, 1,
-            # Back
-            2, 3, 7, 7, 6, 2,
-            # Left
-            3, 0, 4, 4, 7, 3,
             # Top
-            4, 5, 6, 6, 7, 4
-        ])
-        # self.colors = np.array(colors)
+            4, 5, 6, 6, 7, 4,
+            # Front
+            8, 9, 10, 10, 11, 8,
+            # Back
+            12, 13, 14, 14, 15, 12,
+            # Left
+            16, 17, 18, 18, 19, 16,
+            # Right
+            20, 21, 22, 22, 23, 20
+        ], dtype='i')
+        self.colors = np.array([
+            # Top
+            colors[0], colors[1], colors[2],
+            colors[0], colors[1], colors[2],
+            colors[0], colors[1], colors[2],
+            colors[0], colors[1], colors[2],
+            # Bottom
+            colors[3], colors[4], colors[5],
+            colors[3], colors[4], colors[5],
+            colors[3], colors[4], colors[5],
+            colors[3], colors[4], colors[5],
+            # Front
+            colors[6], colors[7], colors[8],
+            colors[6], colors[7], colors[8],
+            colors[6], colors[7], colors[8],
+            colors[6], colors[7], colors[8],
+            # Back
+            colors[9], colors[10], colors[11],
+            colors[9], colors[10], colors[11],
+            colors[9], colors[10], colors[11],
+            colors[9], colors[10], colors[11],
+            # Left
+            colors[12], colors[13], colors[14],
+            colors[12], colors[13], colors[14],
+            colors[12], colors[13], colors[14],
+            colors[12], colors[13], colors[14],
+            # Right
+            colors[15], colors[16], colors[17],
+            colors[15], colors[16], colors[17],
+            colors[15], colors[16], colors[17],
+            colors[15], colors[16], colors[17],
+        ], dtype='f')
 
 
 class Square(Mesh):
-    def __init__(self, sizes):
-        super().__init__()
+    def __init__(self, sizes, shader):
+        super().__init__(shader)
         self.vertices = np.array([
             sizes[0], sizes[1], 0,
             sizes[0], -sizes[1], 0,
             -sizes[0], -sizes[1], 0,
-            -sizes[0], sizes[1], 0
-        ])
+            -sizes[0], -sizes[1], 0,
+            -sizes[0], sizes[1], 0,
+            sizes[0], sizes[1], 0
+        ], dtype='f')
         self.indices = np.array([
-            0, 1, 2, 2, 3, 0
-        ])
+            0, 1, 2, 3, 4, 5
+        ], dtype='i')
+        self.colors = np.array([
+            1.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 1.0, 0.0
+        ], dtype='f')
+
+
+class Cone(Mesh):
+    def __init__(self, height, rad, slices, colors, shader):
+        super().__init__(shader)
+
+        vert = [0, 0, height]
+        col = colors[:3]
+        for slice in range(slices):
+            ang = np.pi * (2*slice + 1) / slices
+            vert += [rad*np.cos(ang), rad*np.sin(ang), 0]
+            col += colors[:3]
+
+        vert += [0, 0, 0]
+        col += colors[3:]
+        for slice in range(slices):
+            ang = np.pi * (2*slice + 1) / slices
+            vert += [rad*np.cos(ang), rad*np.sin(ang), 0]
+            col += colors[3:]
+
+        ind = []
+        for slice in range(slices):
+            ind += [0, 1 + slice, 1 + (1 + slice) % slices]
+        for slice in range(slices):
+            ind += [1 + slices, 1 + slices + (1 + slice), 2 + slices + (1 + slice) % slices]
+
+        self.vertices = np.array(vert, dtype='f')
+        self.indices = np.array(ind, dtype='i')
+        self.colors = np.array(col, dtype='f')
+
+
+class ObjMesh(Mesh):
+    def __init__(self, file_name, shader):
+        super().__init__(shader)
+        parser = ObjParser()
+        parser.read_file(file_name)
+        self.vertices = np.array(parser.vertices, dtype='f')
+        self.indices = np.array(parser.indices, dtype='i')
+        self.colors = np.array([random.random() for _ in parser.vertices], dtype='f')
 
 
 def init():
@@ -209,23 +308,23 @@ def init():
     global shader_attribute_color
 
     vertex_uniform_color = """
-        uniform mat4 mvp;
+        //uniform mat4 mvp;
     
         attribute vec3 pos;
         
         void main()
         {
-            //gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 1.0); //gl_Vertex;
-            gl_Position = mvp * vec4(pos, 1.0);
+            gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 1.0); //gl_Vertex;
+            //gl_Position = mvp * vec4(pos, 1.0);
         }
     """
 
     fragment_uniform_color = """
-        uniform vec4 color;
+        uniform vec3 color;
     
         void main()
         {
-            gl_FragColor = color;
+            gl_FragColor = vec4(color, 1.0);
         }
     """
 
@@ -235,18 +334,18 @@ def init():
     )
 
     vertex_attribute_color = """
-            uniform mat4 mvp;
+            //uniform mat4 mvp;
 
             attribute vec3 pos;
-            attribute vec4 v_color;
+            attribute vec3 color;
             
             varying vec4 f_color;
             
             void main()
             {
-                //gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 1.0); //gl_Vertex;
-                gl_Position = mvp * vec4(pos, 1.0);
-                f_color = v_color;
+                gl_Position = gl_ModelViewProjectionMatrix * vec4(pos, 1.0); //gl_Vertex;
+                //gl_Position = mvp * vec4(pos, 1.0);
+                f_color = vec4(color, 1.0);
             }
         """
 
@@ -267,24 +366,20 @@ def init():
     global meshes
     meshes = []
     meshes.append(Box([1., 1., 1.],
-                      [1.0, 0.0, 0.0, 1.0,
-                       0.0, 1.0, 0.0, 1.0,
-                       0.0, 0.0, 1.0, 1.0,
-                       1.0, 1.0, 0.0, 1.0,
-                       1.0, 0.0, 1.0, 1.0,
-                       0.0, 1.0, 1.0, 1.0]))
-
-    meshes.append(Square([0.5, 0.4]))
-
+                      [0.0, 1.0, 0.0,
+                       1.0, 0.0, 0.0,
+                       1.0, 1.0, 0.0,
+                       1.0, 1.0, 0.0,
+                       1.0, 1.0, 0.0,
+                       1.0, 1.0, 0.0], shader_attribute_color))
+    meshes.append(Cone(2.0, 0.5, 20, [1.0, 1.0, 0.0, 1.0, 0.0, 0.0], shader_attribute_color))
+    meshes.append(ObjMesh('earth.obj', shader_attribute_color))
     for mesh in meshes:
         mesh.set_buffers()
 
     global color
-    color = np.array([1.0, 0.0, 0.2, 1.0])
+    color = np.array([0.0, 0.8, 0.2])
 
-    global loc_mvp_mat_ac, loc_mvp_mat_uc
-    loc_mvp_mat_ac = glGetUniformLocation(shader_attribute_color, 'mvp')
-    loc_mvp_mat_uc = glGetUniformLocation(shader_uniform_color, 'mvp')
     global loc_color
     loc_color = glGetUniformLocation(shader_uniform_color, 'color')
 
@@ -296,66 +391,49 @@ def reshape(w, h):
 
     global aspect
     aspect = w / h
-    global p_mat
-    p_mat = Matrices.perspective(fov, aspect, z_near, z_far)
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluPerspective(fov, aspect, z_near, z_far)
+    glMatrixMode(GL_MODELVIEW)
 
 
 def set_matrix_cube():
-    global m_mat, mv_mat, mvp_mat, v_mat, p_mat
-    m_mat = Matrices.translate([0.0, 0.0, 0.0])
-    # m_mat = Matrices.rotate(20, 1) * m_mat
-    mv_mat = v_mat.dot(m_mat)
-    mvp_mat = p_mat.dot(mv_mat)
-
-
-def set_matrix_square():
-    global m_mat, mv_mat, mvp_mat
-    m_mat = Matrices.rotate(np.pi/4, np.array([0, 1, 0]))
-    mv_mat = v_mat.dot(m_mat)
-    mvp_mat = p_mat.dot(mv_mat)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    cen = eye + target
+    gluLookAt(eye[0], eye[1], eye[2], cen[0], cen[1], cen[2], up[0], up[1], up[2])
 
 
 def set_matrix_cone():
-    global m_mat, mv_mat, mvp_mat, v_mat, p_mat
-    m_mat = Matrices.translate([0.0, 1.0, 0.0])
-    mv_mat = v_mat.dot(m_mat)
-    mvp_mat = p_mat.dot(mv_mat)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    cen = eye + target
+    gluLookAt(eye[0], eye[1], eye[2], cen[0], cen[1], cen[2], up[0], up[1], up[2])
+    glTranslate(0.0, 0.0, 2.0)
 
 
-def set_uniforms(color_is_attribute):
-    global mvp_mat
-    if color_is_attribute:
-        global loc_mvp_mat_ac
-        glUniformMatrix4fv(loc_mvp_mat_ac, 1, False, mvp_mat)
-    else:
-        global loc_mvp_mat_uc, loc_color, color
-        glUniformMatrix4fv(loc_mvp_mat_uc, 1, False, mvp_mat)
-        glUniform4fv(loc_color, 1, color)
+def set_uniforms():
+    glUseProgram(shader_uniform_color)
+    glUniform3fv(loc_color, 1, color)
+    glUseProgram(0)
 
 
 def display():
     glEnable(GL_DEPTH_TEST)
+    glDepthFunc(GL_LESS)
     glViewport(0, 0, window_width, window_height)
-    # glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)
-    glClearColor(0.7, 0.7, 0.7, 1.0)
+    glClearColor(0.0, 0.0, 0.0, 1.0)
+    glClearDepth(1.0)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-    global v_mat
-    v_mat = Matrices.look_at(eye, eye + target, up)
+    set_uniforms()
 
-    glUseProgram(shader_uniform_color)
+    set_matrix_cube()
+    meshes[0].draw()
+    meshes[2].draw()
 
-    set_matrix_square()
-    set_uniforms(color_is_attribute=False)
-    glutSolidTorus(0.5, 1., 30, 20)
-
-    # glUseProgram(shader_uniform_color)
-    #
-    # set_matrix_cube()
-    # set_uniforms(color_is_attribute=False)
-    # meshes[0].draw()
-
-    glUseProgram(0)
+    set_matrix_cone()
+    meshes[1].draw()
 
     glutSwapBuffers()
 
