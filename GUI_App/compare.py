@@ -73,16 +73,12 @@ def generate_particles(n, dx=1e12):
     pos = []
     vel = []
     for p in particles:
-        masses += p[0:1]
+        masses += p[:1]
         pos += p[1:3]
-        vel += p[3:-1]
+        vel += p[3:]
 
-    return masses, pos, vel, 10 * abs((max(pos) - min(pos)) / max(vel))
+    return np.array(masses), np.array(pos), np.array(vel), 10 * abs((max(pos) - min(pos)) / max(vel))
 
 
-m, p, v, t = generate_particles(8)
-print(m)
-print(p)
-print(v)
-print(t)
-
+m, p, v, t = generate_particles(100)
+print(timeit_solve(7, 10, m, p, v, t / 500, 500))

@@ -198,27 +198,30 @@ def solveNbodiesOdeint(masses, init_pos, init_vel, dt, iterations):
     return res, times
 
 
-def sunEarthMoon(method):
-    masses = np.array([massSun, massEarth, massMoon])
-    init_pos = np.array([0, 0, orbitEarthSun, 0, orbitEarthSun + orbitMoonEarth, 0])
-    init_vel = np.array([0, 0, 0, velocityEarth, 0, velocityEarth + velocityMoon])
-
+def solveNbodies(method, masses, init_pos, init_vel, dt, iterations):
     methods = {0: solveNbodiesOdeint,
                1: solveNbodiesVerlet,
                2: solveNbodiesVerletThreading,
                3: solveNbodiesVerletMultiprocessing,
                4: cython_body.SolveNbodiesVerletCython_notm_nomp,
-               # 5: cython_body.SolveNbodiesVerletCython_notm_mp,
+               5: cython_body.SolveNbodiesVerletCython_notm_mp,
                6: cython_body.SolveNbodiesVerletCython_tm_nomp,
                7: cython_body.SolveNbodiesVerletCython_tm_mp}
+    return methods[method](masses, init_pos, init_vel, dt, iterations)
 
-    print(methods[method].__name__)
-    return methods[method](masses, init_pos, init_vel, 60*60*24, 365*5)  # 120 : 240000
 
-# t = time.time()
-# posvel, times = sunEarthMoon(7)
-# print(time.time() - t)
+def sunEarthMoon(method):
+    masses = np.array([massSun, massEarth, massMoon])
+    init_pos = np.array([0, 0, orbitEarthSun, 0, orbitEarthSun + orbitMoonEarth, 0])
+    init_vel = np.array([0, 0, 0, velocityEarth, 0, velocityEarth + velocityMoon])
+
+    return solveNbodies(method, masses, init_pos, init_vel, 60*60*24, 365*5)
+
+
+t = time.time()
+posvel, times = sunEarthMoon(4)
+print(time.time() - t)
 # plt.plot(posvel[:, 0], posvel[:, 1], 'orange')
 # plt.plot(posvel[:, 2], posvel[:, 3], 'cyan')
-# plt.plot(posvel[:, 4], posvel[:, 5], 'red')
+# plt.plot(posvel[:, 4], posvel[:, 5], 'red', linewidth=0.5)
 # plt.show()
