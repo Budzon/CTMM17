@@ -24,7 +24,7 @@ cdef np.ndarray[double, ndim=1] accelerations_notm_nomp(np.ndarray[double, ndim=
         for j in range(n_bodies):
             if i != j:
                 dx = positions[j*dimension:(j+1)*dimension] - positions[i*dimension:(i+1)*dimension]
-                norm = pow(np.linalg.norm(dx), 3)
+                norm = pow(dx.dot(dx), 1.5)
                 res[i*dimension:(i+1)*dimension] += G*masses[j] * dx / norm
     return res
 
@@ -39,8 +39,8 @@ def SolveNbodiesVerletCython_notm_nomp(np.ndarray[double, ndim=1] masses,
     cdef:
         times = np.arange(iterations) * dt
         int half = init_pos.size
-        np.ndarray[double, ndim=2] pos = np.empty((times.size, half))
-        np.ndarray[double, ndim=2] vel = np.empty((times.size, half))
+        np.ndarray[double, ndim=2] pos = np.empty((2, half)) #times.size
+        np.ndarray[double, ndim=2] vel = np.empty((2, half))
         int j
 
     pos[0] = init_pos
@@ -49,9 +49,9 @@ def SolveNbodiesVerletCython_notm_nomp(np.ndarray[double, ndim=1] masses,
     cdef np.ndarray[double, ndim=1] cur_accelerations = accelerations_notm_nomp(masses, pos[0])
     cdef np.ndarray[double, ndim=1] next_accelerations
     for j in range(iterations - 1):
-        pos[j+1] = pos[j] + vel[j] * dt + 0.5 * cur_accelerations * dt * dt
-        next_accelerations = accelerations_notm_nomp(masses, pos[j+1])
-        vel[j+1] = vel[j] + 0.5 * (cur_accelerations + next_accelerations) * dt
+        pos[(j+1) % 2] = pos[j % 2] + vel[j % 2] * dt + 0.5 * cur_accelerations * dt * dt
+        next_accelerations = accelerations_notm_nomp(masses, pos[(j+1) % 2])
+        vel[(j+1) % 2] = vel[j % 2] + 0.5 * (cur_accelerations + next_accelerations) * dt
         cur_accelerations = next_accelerations
 
     return np.concatenate((pos, vel), 1), times
@@ -94,8 +94,8 @@ def SolveNbodiesVerletCython_notm_mp(np.ndarray[double, ndim=1] masses,
     cdef:
         np.ndarray[double, ndim=1] times = np.arange(iterations) * dt
         int half = init_pos.size
-        np.ndarray[double, ndim=2] pos = np.empty((times.size, half))
-        np.ndarray[double, ndim=2] vel = np.empty((times.size, half))
+        np.ndarray[double, ndim=2] pos = np.empty((2, half))
+        np.ndarray[double, ndim=2] vel = np.empty((2, half))
         int j, d, n
         int dimension = init_pos.shape[0] / masses.shape[0]
         int n_bodies = masses.shape[0]
@@ -103,23 +103,22 @@ def SolveNbodiesVerletCython_notm_mp(np.ndarray[double, ndim=1] masses,
     pos[0] = init_pos
     vel[0] = init_vel
 
-    cdef double[:] cur_accelerations = accelerations_tm_mp(masses, pos[0])
-    cdef double[:] next_accelerations
+    cdef np.ndarray[double, ndim=1] cur_accelerations = accelerations_notm_mp(masses, pos[0])
+    cdef np.ndarray[double, ndim=1] next_accelerations
     for j in range(iterations - 1):
-        for n in prange(n_bodies, nogil=True, schedule='static'):
-            for d in range(dimension):
-                pos[j+1, n*dimension + d] = \
-                    pos[j, n*dimension + d]\
-                    + vel[j, n*dimension + d] * dt + 0.5 * cur_accelerations[n*dimension + d] * dt * dt
-
-        next_accelerations = accelerations_notm_mp(masses, pos[j+1])
-
-        for n in prange(n_bodies, nogil=True, schedule='static'):
-            for d in range(dimension):
-                vel[j+1, n*dimension + d] = \
-                    vel[j, n*dimension + d] \
-                    + 0.5 * (cur_accelerations[n*dimension + d] + next_accelerations[n*dimension + d]) * dt
-
+        # for n in prange(n_bodies, nogil=True, schedule='static'):
+        #     for d in range(dimension):
+        #         pos[j+1, n*dimension + d] = \
+        #             pos[j, n*dimension + d]\
+        #             + vel[j, n*dimension + d] * dt + 0.5 * cur_accelerations[n*dimension + d] * dt * dt
+        pos[(j+1) % 2] = pos[j % 2] + vel[j % 2] * dt + 0.5 * cur_accelerations * dt * dt
+        next_accelerations = accelerations_notm_mp(masses, pos[(j+1) % 2])
+        vel[(j+1) % 2] = vel[j % 2] + 0.5 * (cur_accelerations + next_accelerations) * dt
+        # for n in prange(n_bodies, nogil=True, schedule='static'):
+        #     for d in range(dimension):
+        #         vel[j+1, n*dimension + d] = \
+        #             vel[j, n*dimension + d] \
+        #             + 0.5 * (cur_accelerations[n*dimension + d] + next_accelerations[n*dimension + d]) * dt
         cur_accelerations = next_accelerations
 
     return np.concatenate((pos, vel), 1), times
@@ -162,8 +161,8 @@ def SolveNbodiesVerletCython_tm_nomp(double[:] masses,
     cdef:
         double[:] times = np.arange(iterations) * dt
         int half = init_pos.size
-        double[:,:] pos = np.empty((times.size, half))
-        double[:,:] vel = np.empty((times.size, half))
+        double[:,:] pos = np.empty((2, half))
+        double[:,:] vel = np.empty((2, half))
         int j, d, n
         int dimension = init_pos.shape[0] / masses.shape[0]
         int n_bodies = masses.shape[0]
@@ -176,14 +175,14 @@ def SolveNbodiesVerletCython_tm_nomp(double[:] masses,
     for j in range(iterations - 1):
         for d in range(dimension):
             for n in range(n_bodies):
-                pos[j+1, n*dimension + d] = \
-                    pos[j, n*dimension + d]\
-                    + vel[j, n*dimension + d] * dt + 0.5 * cur_accelerations[n*dimension + d] * dt * dt
-        next_accelerations = accelerations_tm_nomp(masses, pos[j+1])
+                pos[(j+1) % 2, n*dimension + d] = \
+                    pos[j % 2, n*dimension + d]\
+                    + vel[j % 2, n*dimension + d] * dt + 0.5 * cur_accelerations[n*dimension + d] * dt * dt
+        next_accelerations = accelerations_tm_nomp(masses, pos[(j+1) % 2])
         for d in range(dimension):
             for n in range(n_bodies):
-                vel[j+1, n*dimension + d] = \
-                    vel[j, n*dimension + d] \
+                vel[(j+1) % 2, n*dimension + d] = \
+                    vel[j % 2, n*dimension + d] \
                     + 0.5 * (cur_accelerations[n*dimension + d] + next_accelerations[n*dimension + d]) * dt
         cur_accelerations = next_accelerations
 
@@ -227,8 +226,8 @@ def SolveNbodiesVerletCython_tm_mp(double[:] masses,
     cdef:
         double[:] times = np.arange(iterations) * dt
         int half = init_pos.size
-        double[:,:] pos = np.empty((times.size, half))
-        double[:,:] vel = np.empty((times.size, half))
+        double[:,:] pos = np.empty((2, half))
+        double[:,:] vel = np.empty((2, half))
         int j, d, n
         int dimension = init_pos.shape[0] / masses.shape[0]
         int n_bodies = masses.shape[0]
@@ -241,16 +240,16 @@ def SolveNbodiesVerletCython_tm_mp(double[:] masses,
     for j in range(iterations - 1):
         for n in prange(n_bodies, nogil=True, schedule='static'):
             for d in range(dimension):
-                pos[j+1, n*dimension + d] = \
-                    pos[j, n*dimension + d]\
-                    + vel[j, n*dimension + d] * dt + 0.5 * cur_accelerations[n*dimension + d] * dt * dt
+                pos[(j+1) % 2, n*dimension + d] = \
+                    pos[j % 2, n*dimension + d]\
+                    + vel[j % 2, n*dimension + d] * dt + 0.5 * cur_accelerations[n*dimension + d] * dt * dt
 
-        next_accelerations = accelerations_tm_mp(masses, pos[j+1])
+        next_accelerations = accelerations_tm_mp(masses, pos[(j+1) % 2])
 
         for n in prange(n_bodies, nogil=True, schedule='static'):
             for d in range(dimension):
-                vel[j+1, n*dimension + d] = \
-                    vel[j, n*dimension + d] \
+                vel[(j+1) % 2, n*dimension + d] = \
+                    vel[j % 2, n*dimension + d] \
                     + 0.5 * (cur_accelerations[n*dimension + d] + next_accelerations[n*dimension + d]) * dt
 
         cur_accelerations = next_accelerations

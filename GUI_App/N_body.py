@@ -5,6 +5,7 @@ import threading
 import multiprocessing as mp
 import time
 import cython_body
+import pyopencl as cl
 
 
 massSun = 1.98892e30  # kg
@@ -59,14 +60,15 @@ def solveNbodiesVerlet(masses, init_pos, init_vel, dt, iterations):
     times = np.arange(iterations) * dt
     half = init_pos.size
     
-    posvel = np.empty((times.size, half * 2))
+    # posvel = np.empty((times.size, half * 2))
+    posvel = np.empty((2, half * 2))
     posvel[0] = np.concatenate((init_pos, init_vel))
 
     cur_accelerations = accelerations(masses, posvel[0, : half])
     for j in np.arange(iterations - 1) + 1:
-        posvel[j, :half] = posvel[j-1, :half] + posvel[j-1, half:] * dt + 0.5 * cur_accelerations * dt**2
-        next_accelerations = accelerations(masses, posvel[j, :half])
-        posvel[j, half:] = posvel[j-1, half:] + 0.5 * (cur_accelerations + next_accelerations) * dt
+        posvel[j % 2, :half] = posvel[(j-1) % 2, :half] + posvel[(j-1) % 2, half:] * dt + 0.5 * cur_accelerations * dt**2
+        next_accelerations = accelerations(masses, posvel[j % 2, :half])
+        posvel[j % 2, half:] = posvel[(j-1) % 2, half:] + 0.5 * (cur_accelerations + next_accelerations) * dt
         cur_accelerations = next_accelerations
 
     return posvel, times
@@ -198,6 +200,124 @@ def solveNbodiesOdeint(masses, init_pos, init_vel, dt, iterations):
     return res, times
 
 
+def SolveNBodiesVerletOpenCL(masses, init_pos, init_vel, dt, iterations):
+    ctx = cl.create_some_context()
+    queue = cl.CommandQueue(ctx)
+
+    masses_cl = np.array(masses, dtype=np.float)
+    init_pos_cl = np.array(init_pos, dtype=np.float)
+    init_vel_cl = np.array(init_vel, dtype=np.float)
+    dt_cl = np.array(dt, dtype=np.float)
+    iterations_cl = np.array(iterations, dtype=np.int)
+
+    pos = np.empty((2, init_pos.size), dtype=np.float)
+    vel = np.empty((2, init_vel.size), dtype=np.float)
+    n_bodies_cl = np.array(masses.size, dtype=np.int)
+    dimension_cl = np.array(init_pos.size // masses.size, dtype=np.int)
+    accelerations = np.empty((2, init_pos.size), dtype=np.float)
+    tmp_dimension_arr = np.empty(init_pos.size // masses.size, dtype=np.float)
+
+    mf = cl.mem_flags
+    masses_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=masses_cl)
+    init_pos_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=init_pos_cl)
+    init_vel_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=init_vel_cl)
+    dt_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=dt_cl)
+    iterations_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=iterations_cl)
+    pos_buf = cl.Buffer(ctx, mf.WRITE_ONLY, pos.nbytes)
+    vel_buf = cl.Buffer(ctx, mf.WRITE_ONLY, vel.nbytes)
+    n_bodies_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=n_bodies_cl)
+    dimension_buf = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=dimension_cl)
+    accelerations_buf = cl.Buffer(ctx, mf.WRITE_ONLY, accelerations.nbytes)
+    tmp_dimension_buf = cl.Buffer(ctx, mf.WRITE_ONLY, tmp_dimension_arr.nbytes)
+
+    prg = cl.Program(ctx,
+                     """
+                     void acceleration(__global float *positions,
+                                       __global float *masses_cl, 
+                                       __global float *accelerations,
+                                       __global float *tmp_dimension_arr, 
+                                       int n_bodies, 
+                                       int dimension,
+                                       int second)
+                     {
+                         double G = 6.67e-11;
+                         double norm, dx;
+                         int shift = second * n_bodies * dimension;
+                         for (int i = 0; i < n_bodies; ++i)
+                         {
+                             for (int d = 0; d < dimension; ++d)
+                                 accelerations[shift + i*dimension + d] = 0;
+                             for (int j = 0; j < n_bodies; ++j)
+                                 if (i != j)
+                                 {
+                                    norm = 0;
+                                    for (int d = 0; d < dimension; ++d)
+                                    {
+                                        dx = positions[shift + j*dimension + d] - positions[shift + i*dimension + d];
+                                        norm += dx * dx;
+                                        tmp_dimension_arr[d] = G * masses_cl[j] * dx;
+                                    }
+                                    norm = pow(norm, 1.5);
+                                    for (int d = 0; d < dimension; ++d)
+                                        accelerations[shift + i*dimension + d] += tmp_dimension_arr[d] / norm;
+                                 }   
+                         }                
+                     }
+
+                     __kernel void verlet_cl(__global float *masses_cl,
+                                             __global float *init_pos_cl,
+                                             __global float *init_vel_cl, 
+                                             __global float *dt_cl, 
+                                             __global int *iterations_cl,
+                                             __global float *pos,
+                                             __global float *vel,
+                                             __global int *n_bodies_cl,
+                                             __global int *dimension_cl,
+                                             __global float *accelerations,
+                                             __global float *tmp_dimension_arr)
+                     {
+                        int n_bodies = *n_bodies_cl, dimension = *dimension_cl, iterations = *iterations_cl;
+                        float dt = *dt_cl;
+                        int shift = n_bodies * dimension;
+
+                        for (int coord = 0; coord < n_bodies * dimension; ++coord)
+                        {
+                            pos[coord] = init_pos_cl[coord];
+                            vel[coord] = init_vel_cl[coord];
+                        }
+
+                        acceleration(pos, masses_cl, accelerations, tmp_dimension_arr, n_bodies, dimension, 0);
+                        for (int t = 1; t < iterations; ++t)
+                        {
+                            for (int n = 0; n < n_bodies; ++n)
+                                for (int d = 0; d < dimension; ++d)
+                                    pos[(t%2)*shift + n*dimension + d] = pos[((t+1)%2)*shift + n*dimension + d] 
+                                    + vel[((t+1)%2)*shift + n*dimension + d] * dt
+                                    + 0.5 * accelerations[((t+1)%2)*shift + n*dimension + d] * dt * dt;
+
+                            acceleration(pos, masses_cl, accelerations, tmp_dimension_arr, n_bodies, dimension, t % 2);
+
+                            for (int n = 0; n < n_bodies; ++n)
+                                for (int d = 0; d < dimension; ++d)
+                                    vel[(t%2)*shift + n*dimension + d] = vel[((t+1)%2)*shift + n*dimension + d] 
+                                    + 0.5 * (accelerations[n*dimension + d] + accelerations[shift + n*dimension + d]) * dt;  
+                        }
+                     }
+                     """)
+    try:
+        prg.build()
+    except:
+        print("Error:")
+        print(prg.get_build_info(ctx.devices[0], cl.program_build_info.LOG))
+        raise
+
+    prg.verlet_cl(queue, (1,), None, masses_buf, init_pos_buf, init_vel_buf, dt_buf, iterations_buf, pos_buf, vel_buf,
+                  n_bodies_buf, dimension_buf, accelerations_buf, tmp_dimension_buf)
+    cl.enqueue_read_buffer(queue, pos_buf, pos).wait()
+    cl.enqueue_read_buffer(queue, vel_buf, vel).wait()
+    return np.concatenate((pos, vel), 1), np.arange(iterations) * dt
+
+
 def solveNbodies(method, masses, init_pos, init_vel, dt, iterations):
     methods = {0: solveNbodiesOdeint,
                1: solveNbodiesVerlet,
@@ -206,7 +326,8 @@ def solveNbodies(method, masses, init_pos, init_vel, dt, iterations):
                4: cython_body.SolveNbodiesVerletCython_notm_nomp,
                5: cython_body.SolveNbodiesVerletCython_notm_mp,
                6: cython_body.SolveNbodiesVerletCython_tm_nomp,
-               7: cython_body.SolveNbodiesVerletCython_tm_mp}
+               7: cython_body.SolveNbodiesVerletCython_tm_mp,
+               8: SolveNBodiesVerletOpenCL}
     return methods[method](masses, init_pos, init_vel, dt, iterations)
 
 
@@ -218,9 +339,9 @@ def sunEarthMoon(method):
     return solveNbodies(method, masses, init_pos, init_vel, 60*60*24, 365*5)
 
 
-t = time.time()
-posvel, times = sunEarthMoon(4)
-print(time.time() - t)
+# t = time.time()
+# posvel, times = sunEarthMoon(4)
+# print(time.time() - t)
 # plt.plot(posvel[:, 0], posvel[:, 1], 'orange')
 # plt.plot(posvel[:, 2], posvel[:, 3], 'cyan')
 # plt.plot(posvel[:, 4], posvel[:, 5], 'red', linewidth=0.5)
