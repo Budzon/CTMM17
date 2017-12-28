@@ -211,6 +211,7 @@ def display():
 
     set_matrix_cube()
     temps = my_heat.propagate()
+    print(temps)
     colors = temps_to_grayscale(temps)
     for ind, mesh in enumerate(meshes):
         color = np.array([colors[ind], colors[ind], colors[ind]])
@@ -363,8 +364,8 @@ areas = obj.surface_areas()
 num_of_parts = len(areas)
 
 common_areas = np.zeros((num_of_parts, num_of_parts))
-common_areas[0, 1] = common_areas[1, 0] = common_areas[1, 2] = common_areas[2, 1] = np.pi
-common_areas[2, 3] = common_areas[3, 2] = common_areas[3, 4] = common_areas[4, 3] = 4*np.pi
+common_areas[0, 1] = common_areas[1, 0] = common_areas[1, 2] = common_areas[2, 1] = 4*np.pi
+common_areas[2, 3] = common_areas[3, 2] = common_areas[3, 4] = common_areas[4, 3] = np.pi
 
 conductivities = np.zeros((num_of_parts, num_of_parts))
 conductivities[0, 1] = conductivities[1, 0] = 20
@@ -376,7 +377,7 @@ blacknesses = np.array([5e-2, 5e-2, 1e-1, 1e-2, 1e-1])
 cs = np.array([520, 520, 900, 840, 900])
 
 inner_heats = [(lambda time: 0) for _ in range(num_of_parts)]
-inner_heats[0] = lambda time: 1 * (20 + 3*np.cos(time / 4))
+inner_heats[0] = lambda time: 1e-1 * (20 + 3*np.cos(time / 4))
 
 my_heat = MultiBodyHeat(np.array([areas[0], areas[3], areas[4], areas[2], areas[1]]),
                         common_areas,
