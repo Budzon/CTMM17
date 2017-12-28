@@ -22,7 +22,7 @@ class MultiBodyHeat(object):
         heat = np.zeros(self.num_of_parts)
         for part in range(self.num_of_parts):
             for another_part in range(self.num_of_parts):
-                heat[part] += self.heat_connections[part, another_part] * (temperatures[part] - temperatures[another_part])
+                heat[part] -= self.heat_connections[part, another_part] * (temperatures[part] - temperatures[another_part])
             heat[part] -= self.boltzmann * self.blacknesses[part] * self.areas[part] * (temperatures[part] / 100)**4
             heat[part] += self.inner_heats[part](time)
         return heat / self.cs

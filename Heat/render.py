@@ -28,10 +28,33 @@ global meshes
 move, left, right, forward, backward, upward, downward = 0, 1, 2, 4, 8, 16, 32
 
 
-def temps_to_grayscale(temps):
+def temps_to_rainbow(temps):
     temp_min = np.min(temps)
     temp_max = np.max(temps)
-    return (temps + temp_min) / (temp_min + temp_max)
+    # grayscale = (temps - temp_min) / (temp_max - temp_min)
+    grayscale = (temps - 42) / (42.5 - 42)
+    out = []
+    for col in grayscale:
+        out.append(np.array([col, col, col]))
+    # invert = (1 - grayscale) * 4
+    # X = np.floor(invert).astype('i')
+    # Y = np.floor(255 * (invert - X)).astype('i')
+    # Y = np.floor(255 * invert).astype('i')
+    # out = []
+    # for ind in range(len(Y)):
+    #     out.append(np.array([255, Y[ind], 0]))
+    # for ind in range(len(grayscale)):
+    #     if X[ind] == 0:
+    #         out.append(np.array([255, Y[ind], 0]))
+    #     elif X[ind] == 1:
+    #         out.append(np.array([255-Y[ind], 255, 0]))
+    #     elif X[ind] == 2:
+    #         out.append(np.array([0, 255, Y[ind]]))
+    #     elif X[ind] == 3:
+    #         out.append(np.array([0, 255-Y[ind], 255]))
+    #     else:
+    #         out.append(np.array([0, 0, 255]))
+    return out
 
 
 class Mesh:
@@ -212,11 +235,10 @@ def display():
     set_matrix_cube()
     temps = my_heat.propagate()
     print(temps)
-    colors = temps_to_grayscale(temps)
+    colors = temps_to_rainbow(temps)
     for ind, mesh in enumerate(meshes):
-        color = np.array([colors[ind], colors[ind], colors[ind]])
+        color = colors[ind]
         set_uniforms()
-        # mesh.colors = np.array([col for _ in mesh.vertices], dtype='f')
         mesh.draw()
 
     glutSwapBuffers()
@@ -377,7 +399,7 @@ blacknesses = np.array([5e-2, 5e-2, 1e-1, 1e-2, 1e-1])
 cs = np.array([520, 520, 900, 840, 900])
 
 inner_heats = [(lambda time: 0) for _ in range(num_of_parts)]
-inner_heats[0] = lambda time: 1e-1 * (20 + 3*np.cos(time / 4))
+inner_heats[0] = lambda time: 0.5 * (20 + 3*np.cos(time / 4))
 
 my_heat = MultiBodyHeat(np.array([areas[0], areas[3], areas[4], areas[2], areas[1]]),
                         common_areas,
@@ -385,5 +407,5 @@ my_heat = MultiBodyHeat(np.array([areas[0], areas[3], areas[4], areas[2], areas[
                         blacknesses,
                         cs,
                         inner_heats,
-                        1, 2)
+                        100, 2)
 launch()
